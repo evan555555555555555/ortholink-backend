@@ -132,7 +132,54 @@ async def faiss_debug():
         except Exception as e:
             diag["redis_error"] = str(e)[:200]
 
-        # Step 6: Full search with country filter (bypasses cache for comparison)
+        # Step 6: Manual full pipeline using pre-computed embedding (same as step 1)
+        try:
+            qvec3 = emb.reshape(1, -1).copy()
+            faiss_lib.normalize_L2(qvec3)
+            # Use same oversample as store.search for US
+            search_k_full = min(12000, store.index.ntotal)
+            scores3, indices3 = store.index.search(qvec3, search_k_full)
+            manual_results = []
+            skipped_none = 0
+            skipped_country = 0
+            skipped_inactive = 0
+            skipped_revoked = 0
+            for sc, ix in zip(scores3[0], indices3[0]):
+                if ix == -1:
+                    continue
+                chunk = store._get_chunk(int(ix))
+                if chunk is None:
+                    skipped_none += 1
+                    continue
+                if chunk.country.upper() != "US":
+                    skipped_country += 1
+                    continue
+                if not chunk.is_active:
+                    skipped_inactive += 1
+                    continue
+                if chunk.regulatory_status in ("REVOKED", "SUPERSEDED"):
+                    skipped_revoked += 1
+                    continue
+                manual_results.append({
+                    "score": float(sc),
+                    "regulation": chunk.regulation_name[:60],
+                    "article": chunk.article[:40] if chunk.article else "",
+                })
+                if len(manual_results) >= 5:
+                    break
+            diag["manual_search_results"] = len(manual_results)
+            diag["manual_search_skipped"] = {
+                "none_chunk": skipped_none,
+                "wrong_country": skipped_country,
+                "inactive": skipped_inactive,
+                "revoked": skipped_revoked,
+            }
+            if manual_results:
+                diag["manual_search_top3"] = manual_results[:3]
+        except Exception as e:
+            diag["manual_search_error"] = str(e)[:300]
+
+        # Step 7: Test store.search() (calls embed_text internally)
         try:
             results = store.search("medical device registration", "US", top_k=3)
             diag["full_search_results"] = len(results)
