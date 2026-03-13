@@ -260,7 +260,11 @@ class VectorStore:
                 pass  # Cache unavailable — fall through to FAISS
 
         # Embed query
-        query_embedding = embed_text(query).reshape(1, -1)
+        try:
+            query_embedding = embed_text(query).reshape(1, -1)
+        except Exception as e:
+            logger.error("embed_text() failed in search(): %s", e)
+            return []
         faiss.normalize_L2(query_embedding)
 
         # Search a large oversample to guarantee post-filter coverage.
