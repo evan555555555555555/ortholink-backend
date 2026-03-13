@@ -18,7 +18,7 @@ RUN pip install poetry==2.1.3 && poetry config virtualenvs.create false
 
 # Copy dependency files first for caching
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --only main --no-interaction --no-ansi
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy app code
 COPY . .
