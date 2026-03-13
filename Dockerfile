@@ -30,6 +30,10 @@ RUN mkdir -p /app/data/embeddings && \
     curl -L -o /app/data/embeddings/metadata.json \
       https://github.com/evan555555555555555/ortholink-backend/releases/download/v1.0.0/metadata.json
 
+# Pre-convert metadata.json → SQLite (saves ~2GB RAM at runtime)
+RUN python -c "from app.tools.metadata_db import json_to_sqlite; json_to_sqlite('/app/data/embeddings/metadata.json', '/app/data/embeddings/metadata.db')" && \
+    rm /app/data/embeddings/metadata.json
+
 EXPOSE 10000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1"]

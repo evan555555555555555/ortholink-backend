@@ -26,6 +26,7 @@ import numpy as np
 
 from app.core.config import get_settings
 from app.tools.embeddings import embed_text
+from app.tools.metadata_db import MetadataDB, json_to_sqlite, DB_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -153,25 +154,64 @@ class VectorStore:
         self.dimension = settings.openai_embedding_dimensions  # 3072
         self.index: Optional[faiss.IndexFlatIP] = None
         self.metadata: list[ChunkMetadata] = []
+        self._metadata_db: Optional[MetadataDB] = None
+        self._use_db = False  # True when SQLite metadata is available
         self._loaded = False
 
     def _ensure_loaded(self) -> None:
-        """Load index from disk if not already loaded."""
+        """Load index from disk if not already loaded.
+        Prefers SQLite metadata (low RAM) over in-memory JSON."""
         if self._loaded:
             return
         index_file = os.path.join(self.index_path, "faiss.index")
         metadata_file = os.path.join(self.index_path, "metadata.json")
-        if os.path.exists(index_file) and os.path.exists(metadata_file):
-            self.index = faiss.read_index(index_file)
-            with open(metadata_file, "r") as f:
-                raw_metadata = json.load(f)
-            self.metadata = [ChunkMetadata.from_dict(m) for m in raw_metadata]
-            logger.info(f"Loaded FAISS index with {self.index.ntotal} vectors")
+        db_file = os.path.join(self.index_path, DB_FILENAME)
+
+        if os.path.exists(index_file) and (os.path.exists(db_file) or os.path.exists(metadata_file)):
+            # Use IO_FLAG_MMAP to avoid loading full index into RAM
+            try:
+                self.index = faiss.read_index(index_file, faiss.IO_FLAG_MMAP)
+                logger.info("Loaded FAISS index with mmap")
+            except Exception:
+                self.index = faiss.read_index(index_file)
+                logger.info("Loaded FAISS index into memory (mmap unavailable)")
+
+            # Prefer SQLite metadata (disk-backed, ~0 RAM)
+            if os.path.exists(db_file):
+                self._metadata_db = MetadataDB(db_file)
+                self._use_db = True
+                logger.info(f"Using SQLite metadata ({self._metadata_db.count()} chunks)")
+            elif os.path.exists(metadata_file):
+                # Auto-convert JSON → SQLite for next time
+                try:
+                    json_to_sqlite(metadata_file, db_file)
+                    self._metadata_db = MetadataDB(db_file)
+                    self._use_db = True
+                    logger.info("Converted metadata.json → SQLite, using disk-backed store")
+                except Exception:
+                    # Fallback: load into memory
+                    with open(metadata_file, "r") as f:
+                        raw_metadata = json.load(f)
+                    self.metadata = [ChunkMetadata.from_dict(m) for m in raw_metadata]
+                    logger.info("Loaded metadata into memory (SQLite conversion failed)")
+
+            logger.info(f"FAISS index has {self.index.ntotal} vectors")
         else:
             self.index = faiss.IndexFlatIP(self.dimension)
             self.metadata = []
             logger.info("Created new empty FAISS index")
         self._loaded = True
+
+    def _get_chunk(self, idx: int) -> Optional[ChunkMetadata]:
+        """Get chunk metadata by FAISS index — from SQLite or in-memory list."""
+        if self._use_db and self._metadata_db:
+            data = self._metadata_db.get(idx)
+            if data is None:
+                return None
+            return ChunkMetadata.from_dict(data)
+        if idx < len(self.metadata):
+            return self.metadata[idx]
+        return None
 
     def add_chunks(
         self,
@@ -236,7 +276,9 @@ class VectorStore:
             if idx == -1:
                 continue
 
-            chunk = self.metadata[idx]
+            chunk = self._get_chunk(idx)
+            if chunk is None:
+                continue
 
             # HC-5: Country isolation — MANDATORY filter
             if chunk.country.upper() != country.upper():
