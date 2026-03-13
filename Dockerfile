@@ -30,6 +30,6 @@ RUN mkdir -p /app/data/embeddings && \
     curl -L -o /app/data/embeddings/metadata.json \
       https://github.com/evan555555555555555/ortholink-backend/releases/download/v1.0.0/metadata.json
 
-EXPOSE 8000
+EXPOSE 10000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1"]
