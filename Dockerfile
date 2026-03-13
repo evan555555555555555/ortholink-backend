@@ -14,11 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
-RUN pip install poetry==1.8.2 && poetry config virtualenvs.create false
+RUN pip install poetry==2.1.3 && poetry config virtualenvs.create false
 
 # Copy dependency files first for caching
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-dev --no-interaction --no-ansi
+RUN poetry install --only main --no-interaction --no-ansi
 
 # Copy app code
 COPY . .
