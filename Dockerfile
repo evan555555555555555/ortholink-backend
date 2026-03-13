@@ -23,6 +23,13 @@ RUN poetry install --no-dev --no-interaction --no-ansi
 # Copy app code
 COPY . .
 
+# Download FAISS vector database from GitHub Release (33,949 chunks, 18 markets)
+RUN mkdir -p /app/data/embeddings && \
+    curl -L -o /app/data/embeddings/faiss.index \
+      https://github.com/evan555555555555555/ortholink-backend/releases/download/v1.0.0/faiss.index && \
+    curl -L -o /app/data/embeddings/metadata.json \
+      https://github.com/evan555555555555555/ortholink-backend/releases/download/v1.0.0/metadata.json
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
