@@ -98,7 +98,41 @@ async def faiss_debug():
             except Exception as e:
                 diag["metadata_lookup_error"] = str(e)[:200]
 
-        # Step 4: Full search with country filter
+        # Step 4: Large raw FAISS search — count countries in top 1000
+        try:
+            qvec2 = emb.reshape(1, -1).copy()
+            faiss_lib.normalize_L2(qvec2)
+            scores2, indices2 = store.index.search(qvec2, 1000)
+            country_counts: dict = {}
+            for idx in indices2[0]:
+                if idx == -1:
+                    continue
+                chunk = store._get_chunk(int(idx))
+                if chunk:
+                    c = chunk.country
+                    country_counts[c] = country_counts.get(c, 0) + 1
+                else:
+                    country_counts["MISSING"] = country_counts.get("MISSING", 0) + 1
+            diag["top1000_country_distribution"] = dict(sorted(country_counts.items(), key=lambda x: -x[1])[:10])
+            diag["top1000_US_count"] = country_counts.get("US", 0)
+        except Exception as e:
+            diag["top1000_error"] = str(e)[:300]
+
+        # Step 5: Redis cache status
+        try:
+            from app.services.faiss_cache import _get_redis, get_cached
+            r = _get_redis()
+            diag["redis_available"] = r is not None
+            if r is not None:
+                # Check if there's a cached result for our test query
+                cached = get_cached("medical device registration", "US")
+                diag["redis_cached_test_query"] = cached is not None
+                if cached is not None:
+                    diag["redis_cached_result_len"] = len(cached)
+        except Exception as e:
+            diag["redis_error"] = str(e)[:200]
+
+        # Step 6: Full search with country filter (bypasses cache for comparison)
         try:
             results = store.search("medical device registration", "US", top_k=3)
             diag["full_search_results"] = len(results)

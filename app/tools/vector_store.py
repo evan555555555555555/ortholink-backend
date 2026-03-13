@@ -254,7 +254,7 @@ class VectorStore:
             try:
                 from app.services.faiss_cache import get_cached, set_cached
                 _cache_hit = get_cached(query, country, device_class)
-                if _cache_hit is not None:
+                if _cache_hit:  # Truthy check: skip empty cached results
                     return _cache_hit[:effective_k]
             except Exception:
                 pass  # Cache unavailable — fall through to FAISS
