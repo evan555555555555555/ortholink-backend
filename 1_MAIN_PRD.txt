@@ -1,0 +1,622 @@
+
+ORTHOLINK
+The Regulatory Intelligence Backbone
+Product Requirements Document — Final Engineering Specification
+Five AI Agents  •  Fifteen Countries  •  Three User Types  •  Zero Questions
+V5.0  |  February 2026  |  CONFIDENTIAL
+
+
+Product | OrthoLink — Regulatory Intelligence Backbone
+Domain | Medical Device Regulatory Compliance (Orthopedic Focus, All Classes)
+Users | Manufacturers + Distributors + Regulatory Consultants
+TAM | $6.65B AI Reg Affairs + $11.31B RA Outsourcing
+First Customer | Helton Barral, CEO, BRM Extremities
+Agents | 5 AI Agents (DVA, CRA, ROA, RSA, RAA) via CrewAI
+Countries | 15 (FDA, EU MDR, UK, Canada, Australia, Japan, China, Brazil, India, Ukraine, Switzerland, Mexico, South Korea, Russia, Saudi Arabia)
+Frontend | React 18 + TypeScript + Vite (Compliance-Reviewer fork)
+Backend | Python 3.11+ / FastAPI / CrewAI / Supabase / OpenAI
+Timeline | 5 Milestones, 12 Weeks
+Owner | Evan Boudreau
+
+
+Table of Contents
+
+0. READ THIS FIRST: Medical Device Industry Primer
+This section exists because the engineer building OrthoLink may not know what a 510(k) is or why Ukraine Resolution 753 matters. Read this before touching any code. Every concept referenced later in this document is defined here.
+0.1 What Is a Medical Device?
+A medical device is any instrument, apparatus, implant, or software intended for diagnosis, prevention, monitoring, treatment, or alleviation of disease or injury. Medical devices range from tongue depressors (Class I, minimal risk) to artificial hip joints (Class III, highest risk). Every country has its own classification system, but they all share the same principle: the higher the risk, the more regulatory evidence required before you can sell it.
+0.2 What Is an Orthopedic Device?
+Orthopedic devices are implants and instruments used to treat musculoskeletal conditions. BRM Extremities (our first customer) manufactures: joint spacers (temporary implants placed in infected joints), fixation systems (plates, screws, nails that hold fractured bones together), and extremity reconstruction implants (replacement components for fingers, wrists, ankles, toes). These are typically Class IIb or III devices because they are implanted inside the human body, contact bone tissue, and remain for extended periods. This means they face the strictest regulatory requirements in every country.
+0.3 The Regulatory Approval Process (Simplified)
+Before a manufacturer can SELL a device in any country, they must REGISTER it with that country's regulatory authority. Each authority requires a specific set of documents proving the device is safe and effective. The key authorities and their primary regulations are:
+
+Country | Authority | Abbreviation | Key Framework | Device Classification
+United States | Food and Drug Administration | FDA | 21 CFR 800–899 + QMSR (Feb 2026) | Class I / II / III
+European Union | National Competent Authorities + Notified Bodies | NCA/NB | MDR 2017/745 | Class I / IIa / IIb / III
+Ukraine | Ministry of Health | MoH | Resolutions 753, 754, 755 | Class I / IIa / IIb / III
+India | Central Drugs Standard Control Organisation | CDSCO | Medical Devices Rules 2017 | Class A / B / C / D
+Japan | Pharmaceuticals and Medical Devices Agency | PMDA | PMD Act + QMS Ordinance | Class I / II / III / IV
+Brazil | National Health Surveillance Agency | ANVISA | RDC 751/2022 | Class I / II / III / IV
+Canada | Health Canada | HC | CMDR + MDSAP | Class I / II / III / IV
+China | National Medical Products Administration | NMPA | Order 739/6 | Class I / II / III
+United Kingdom | Medicines and Healthcare products Regulatory Agency | MHRA | UK MDR 2002 (amended) | Class I / IIa / IIb / III
+Australia | Therapeutic Goods Administration | TGA | Therapeutic Goods Act 1989 | Class I / IIa / IIb / III
+South Korea | Ministry of Food and Drug Safety | MFDS | Medical Devices Act | Class I / II / III / IV
+Switzerland | Swiss Agency for Therapeutic Products | Swissmedic | MedDO/TPA | Class I / IIa / IIb / III
+Mexico | Federal Commission for Protection against Health Risks | COFEPRIS | NOM-241-SSA1 | Class I / II / III
+Russia | Federal Service for Surveillance in Healthcare | Roszdravnadzor | PP 1416 | Risk classes 1–3
+Saudi Arabia | Saudi Food and Drug Authority | SFDA | MDMA Implementing Rules | Class I / IIa / IIb / III
+
+0.4 Key Regulatory Terms You Must Know
+
+Term | What It Means | Why It Matters for OrthoLink
+510(k) | FDA premarket notification. Manufacturer proves device is "substantially equivalent" to an existing (predicate) device. | ROA generates checklists for 510(k). Strategy Agent finds predicate devices.
+CE Marking | European conformity mark. Device meets EU MDR requirements. | Many countries accept CE as evidence. Document reuse mapping depends on this.
+Technical File | Complete documentation package for EU MDR: design, testing, clinical, risk management. | Strategy Agent maps which parts of a Technical File transfer to other countries.
+Certificate of Free Sale (CFS/CFG) | Government-issued document proving a device is legally marketed in its home country. | DVA must classify this as REGULATORY (not commercial). Previous contractor got this wrong.
+QMSR | Quality Management System Regulation (FDA, effective Feb 2026). Aligns FDA with ISO 13485. | ROA must include QMSR requirements in US checklists. This is brand new and time-sensitive.
+Notified Body | Third-party organization that audits manufacturers for EU MDR compliance. | Timeline estimates in Strategy Agent depend on NB review backlogs.
+MDSAP | Medical Device Single Audit Program. One audit accepted by 5 countries (US, Canada, Australia, Japan, Brazil). | Strategy Agent must recognize MDSAP as a mutual recognition pathway that reduces cost.
+IFU | Instructions for Use. The document that ships with the device telling clinicians how to use it. | Must be translated into local language. Every country requires this. DVA must recognize it.
+UDI | Unique Device Identification. A barcode/label system mandated by FDA, EU, and others. | Checklist generator must include UDI requirements per country.
+Clinical Evaluation Report | Document summarizing clinical evidence that a device is safe and performs as intended. | This is REQUIRED in most countries. DVA must never classify it as EXTRA.
+
+0.5 The Three Actors in International Device Trade
+OrthoLink serves ALL THREE of these user types. The platform must understand the distinction because regulatory responsibilities differ by role:
+
+Actor | Definition | Regulatory Responsibilities | OrthoLink Persona
+Manufacturer (OEM) | Company that designs and produces the device. Example: BRM Extremities (Italy). | Holds the product registration. Responsible for Technical File, design controls, quality system, clinical evidence, post-market surveillance. | Helton Barral. Uses DVA to verify distributors, ROA for checklists, CRA for document review, Strategy for market entry planning.
+Distributor / Importer | Company that purchases devices from the manufacturer and sells them in a specific market. Example: Helton's Texas contact. | Must register as an importer (FDA: establishment registration + device listing). Responsible for local labeling, adverse event reporting, customs clearance. Does NOT own the product registration. | Uses ROA for importer-specific checklists. Receives PDF exports from manufacturer. May use CRA to review their own QMS documents.
+Regulatory Consultant / Boutique Firm | Advisory firm that helps manufacturers navigate regulations. Example: a 5-person RA consultancy serving 20 device clients. | No direct regulatory responsibility. Provides guidance to manufacturers and distributors. Generates checklists, reviews documents, plans strategy on behalf of clients. | Uses ALL 5 agents as a force multiplier. One OrthoLink subscription replaces 100+ hours of manual research per client. This is the B2B2B flywheel.
+
+0.6 The Distributor Fraud Problem (Why DVA Exists)
+When a manufacturer wants to sell in a foreign country, they typically partner with a local distributor who handles registration, customs, and sales. The manufacturer has no way to verify what the distributor tells them because the regulations are in a foreign language, on government websites they cannot navigate, in legal frameworks they do not understand.
+Some distributors exploit this by padding the document list — claiming the government requires documents it does not, then charging the manufacturer consulting fees to "prepare" those documents. Others simply send overwhelming lists that cause the manufacturer to abandon the market entirely (which is what happened to BRM in India). This is the core problem DVA solves: cross-reference the distributor's claims against the actual government regulations in the OrthoLink vector store.
+
+1. Market Thesis & Business Strategy
+1.1 Research-Validated Problem Statement
+Problem: SMB medical device companies (20–500 employees) selling into 3+ countries lose 40–80 hours per market entry on regulatory verification, face 35% distributor fraud rates, and spend $15K–$150K per market on static consulting outputs. No affordable self-serve tool exists.
+Independent Variable: Access to OrthoLink's 5-agent platform vs. status quo (consultants + manual research).
+Dependent Variables: (1) Time-to-verification, (2) Cost per market entry, (3) Fraud detection accuracy, (4) Submission rejection rate, (5) Time-to-first-revenue in new market.
+Hypothesis: OrthoLink reduces time-to-verification by ≥60%, cost by ≥40%, achieves ≥90% fraud detection accuracy, and cuts time-to-first-revenue by ≥30%.
+Validation: Pre/post measurement with first 10 customers. n=10, 80% power, α=0.05, paired t-test.
+1.2 Competitive Moat
+Proprietary 15-Country Vector Store: Article-level chunked, citation-precise. 12–18 months to replicate.
+Data Flywheel: Every DVA run generates labeled fraud/legitimate training data. Accuracy improves with usage.
+Decision Lock-In: Once strategy is mapped in OrthoLink, switching means rebuilding the strategic foundation.
+Category Creation: No competitor offers distributor fraud detection. We own this positioning.
+1.3 Pricing Architecture
+
+Tier | Monthly | Agents Included | Target Persona
+Starter | $149 | DVA (5 countries) + ROA (basic checklists) | First-Time Exporter, Solo Consultant
+Professional | $499 | DVA + ROA + CRA (all 15 countries, unlimited reviews) | Targeted OEM (Helton), Scaling Manufacturer
+Strategy | $999 | All 5 agents + Strategy reports + Alert monitoring | Multi-market manufacturers, growing consultancies
+Enterprise | $2,499+ | All agents + API access + white-label + dedicated support + multi-seat | CROs, large consultancies reselling to clients
+
+
+2. Lessons from Previous Development Attempt
+CRITICAL CONTEXT: A previous contractor was hired and terminated for delivering code that did not match the specification. This section documents what went wrong so you DO NOT repeat these mistakes. Read every item.
+2.1 What Went Wrong (Technical Failures)
+
+Failure | What Was Promised | What Was Delivered | Your Requirement
+Hardcoded dictionaries | Semantic classification via LLM + vector store | Python dicts (COMMERCIAL_ITEMS, UA_ITEM_TERMS) that gate classification BEFORE retrieval. LLM logs were decorative. | ZERO hardcoded dictionaries in classification logic. HC-2 in constraints. grep-verifiable.
+Local embeddings | OpenAI text-embedding-3-large (3072 dims) | Local sentence-transformers to "save API credits." All results were based on inferior vectors. | text-embedding-3-large ONLY. Confirmed in embedding call. HC-1. Non-negotiable.
+Set Theory was fake | LLM Normalization + Set Theory for comparison | Set Theory function ran but its True/False output was ignored. Classifications came from dictionaries. | Set Theory gate MUST drive the final classification. If set_theory_result is not used in the if/else, the code is rejected.
+Certificate of Free Sale misclassified | Regulatory document classification | Classified as COMMERCIAL_NON_REGULATORY. CFS is a regulatory document required by most countries. | CFS must be classified as REGULATORY. This is a pytest assertion.
+Tests from wrong repo | Custom pytest suite for Ukraine bank statement | Tests still imported from sec10q_rag.parsing (the SEC repo). No custom tests existed. | All tests must be OrthoLink-specific. Zero imports from sec10q repos.
+Empty Flask routes | Functional /query, /compare, /checklist routes | app/routes.py was 0 bytes. Zero lines of code. | Every API endpoint must have a working handler with tests.
+Scraper didn't clean | Government page scraping with boilerplate removal | Scraped text still contained "Firefox", "Google Chrome", "We use cookies." | Scraper validation: clean_text must pass keyword check AND noise check.
+9 commits for full MVP | Incremental progress on GitHub | Contractor worked locally, pushed rarely. Could not verify progress. | Daily commits to dev branch. HC-6. Non-negotiable.
+.env committed to repo | Secrets in environment variables only | .env was committed to git with API keys visible. | HC-5. .env in .gitignore. CI check confirms.
+
+2.2 Verification Protocol (How We Prevent This)
+Every milestone requires ALL of the following before payment is released:
+Code Review: grep for hardcoded dicts, grep for model string in embedding calls, grep for .env in git history.
+pytest Run: Screenshot of ALL tests passing in terminal. Tests must be OrthoLink-specific.
+Live Demo: Loom video showing the feature working on the deployed URL, not localhost.
+Git Audit: Verify commit history shows daily incremental work, not bulk pushes.
+Architecture Audit: 10 random chunks per country reviewed for correct metadata.
+
+3. First Customer Scenarios (Non-Negotiable)
+"We have a distributor in Ukraine asking for excessive docs — suspicious. In Texas, a novice importer needs doc guidance. In India, a distributor requested so much we gave up selling entirely." — Helton Barral, CEO, BRM Extremities
+3.1 Scenario 1: Ukraine Fraudulent Distributor → DVA
+Input: 14-row CSV (real distributor data) + Country: Ukraine + Class: IIb + Device: Orthopedic fixation system
+Output: Gap analysis classifying each row as REQUIRED / EXTRA / MISSING / OPTIONAL with citation from Res. 753–755
+Critical Semantic Test: "Bank Statement" MUST match "Proof of Financial Stability" (cosine ≥0.82 + LLM confirmation). NOT keyword matching. NOT dictionary lookup.
+Critical Classification Test: "Certificate of Free Sale" MUST be classified as REQUIRED (it is a regulatory document), NOT as COMMERCIAL/EXTRA. The previous contractor got this wrong.
+3.2 Scenario 2: Texas Novice Importer → ROA
+Input: Country: United States + Class: II + Device: Orthopedic joint spacer
+Output: Role-split checklist (≥15 items). Importer items ∩ Exporter items = ∅. Every item cites specific 21 CFR section. PDF export.
+3.3 Scenario 3: India Market Abandonment → DVA + ROA
+Input: India distributor's document list CSV + Country: India + Class: IIb (CDSCO Class C)
+Output: DVA flags items against CDSCO MDR 2017. ROA generates India checklist independently. Two-agent comparison.
+
+4. The Five AI Agents
+4.1 CrewAI Orchestration Architecture
+All five agents are implemented as CrewAI Agent classes (github.com/crewAIInc/crewAI). CrewAI provides: (1) Agent = a role + goal + backstory + tools + LLM config, (2) Task = a specific unit of work with expected_output schema, (3) Crew = a group of agents + tasks executing in a Process (Sequential or Hierarchical), (4) Memory = short-term (within crew), long-term (across sessions), entity (persistent profiles). Each OrthoLink API endpoint instantiates a Crew, kicks it off, and returns the structured Pydantic output.
+4.1.1 Why CrewAI Over Raw LLM Calls
+Structured delegation: Manager agents assign sub-tasks to specialist agents with explicit expected outputs.
+Tool isolation: Each agent has access to only the tools it needs (least privilege).
+Memory across sessions: Strategy Agent remembers device profiles. Alert Agent remembers last scan hashes.
+Guardrails: CrewAI's output_pydantic forces structured JSON; no free-form hallucination possible.
+Observability: CrewAI logs every agent thought, tool call, and delegation decision for audit trails.
+Future-proofing: CrewAI Flows (pipeline orchestration) enables chaining crews into multi-step workflows without custom code.
+4.1.2 CrewAI Code Pattern (Every Agent Follows This)
+from crewai import Agent, Task, Crew, Process
+from crewai.tools import tool
+from pydantic import BaseModel
+
+class GapAnalysisReport(BaseModel):  # Structured output
+    country: str
+    items: list[GapItem]
+    fraud_risk_score: float
+
+@tool
+def search_vector_store(query: str, country: str, device_class: str) -> str:
+    """Search FAISS for regulatory requirements."""
+    # FAISS search with metadata filtering
+
+dva_agent = Agent(
+    role='Distributor Verification Specialist',
+    goal='Detect fraudulent document requests with legal citations',
+    backstory='Senior RA auditor, 15 years, 50+ countries...',
+    tools=[search_vector_store, compute_similarity, classify_status],
+    llm='gpt-4o',
+    verbose=True  # Logs to audit trail
+)
+
+crew = Crew(agents=[dva_agent], tasks=[verify_task],
+           process=Process.sequential, output_pydantic=GapAnalysisReport)
+result = crew.kickoff(inputs={'csv_data': ..., 'country': 'Ukraine'})
+
+4.2 Agent 1: DVA — Distributor Verification Agent ("The Sentinel")
+CrewAI Config: role='Distributor Verification Specialist' | goal='Detect fraudulent document requests' | process=Sequential
+4.2.1 Processing Pipeline (7 Steps)
+
+Step | Operation | Implementation | Output
+1. Parse | Extract document names from uploaded CSV | pandas.read_csv(); normalize: lowercase, strip whitespace, expand abbreviations ("Cert"→"Certificate") | List[str]: normalized document names
+2. Retrieve Baseline | Get all regulatory requirements for country+class from vector store | FAISS search_vector_store(country=X, device_class=Y, k=50). Metadata filter: is_active=true | List[RegRequirement]: the ground-truth set
+3. Embed Items | Generate embeddings for each distributor item | OpenAI text-embedding-3-large. Batch API call. Cache embeddings for repeat items. | ndarray[n, 3072]
+4. Semantic Match | For each distributor item, find closest baseline item | Cosine similarity. Threshold: ≥0.82 = candidate match. <0.82 = no match. | List[Tuple[dist_item, baseline_item, score]]
+5. LLM Classify | Confirm/reject match, assign status, generate citation | gpt-4o structured output (JSON mode). Prompt includes regulation text. Output: {status, citation, confidence, explanation} | List[Classification]
+6. Gap Detect | Find baseline items with no distributor match | Set difference: baseline - matched_baseline = MISSING items | List[MissingItem]
+7. Score | Compute fraud risk and flag low-confidence items | fraud_score = (EXTRA + MISSING) / total. Items with confidence < 0.7 → needs_human_review queue | GapAnalysisReport (Pydantic)
+
+4.2.2 Tools (Python @tool Functions)
+
+Tool Name | Signature | What It Does
+search_vector_store | (country, device_class, k=50) → List[Dict] | FAISS query with metadata filtering. Returns chunks with text, citation, section_path.
+compute_similarity | (item_embedding, baseline_embeddings) → List[Tuple[str, float]] | Cosine similarity via numpy. Returns sorted pairs above threshold.
+classify_status | (distributor_item, matched_regulation, regulation_text) → Dict | gpt-4o JSON mode. Returns {status, citation, confidence, explanation}.
+calculate_fraud_score | (classifications) → float | Aggregate: (EXTRA + MISSING) / total. >0.3 triggers warning.
+
+4.2.3 API: POST /api/v1/verify-distributor
+Request: multipart/form-data with CSV file + country (string) + device_class (string) + device_type (string, optional)
+Response (GapAnalysisReport):
+{ "country": "Ukraine", "device_class": "IIb", "analysis_id": "uuid",
+  "summary": { "total_submitted": 14, "required": 9, "extra": 3, "missing": 2,
+              "optional": 0, "unverifiable": 0, "fraud_risk_score": 0.36 },
+  "items": [{ "distributor_item": "Bank Statement",
+             "status": "REQUIRED", "matched_regulation": "Proof of Financial Stability",
+             "citation": "Resolution 753, Article 14, Clause 3",
+             "confidence": 0.91, "explanation": "Semantically equivalent..." }],
+  "needs_human_review": [], "disclaimer": "Reference tool only..." }
+
+4.3 Agent 2: CRA — Compliance Review Agent ("The Reviewer")
+CrewAI Config: role='Medical Device Compliance Auditor' | goal='Stream compliance reviews grounded in regulatory text' | process=Sequential
+Built on: github.com/Dineshkumar-Ponnusamy/Compliance-Reviewer (React 18 + TypeScript + Vite). OrthoLink adds the FastAPI backend, RAG grounding, and resolves all 22 gaps from the build brief (see Section 7).
+4.3.1 How It Works
+User uploads a document (PDF, DOCX, XLSX, TXT) via the dashboard.
+Frontend sends file to POST /api/v1/review-document with selected standard(s) and country.
+FastAPI extracts text (via Web Worker on frontend OR server-side fallback).
+CRA agent chunks the document, retrieves relevant regulatory sections from vector store (RAG grounding).
+Agent reviews document against regulatory requirements via gpt-4o with streaming (SSE).
+Findings stream to frontend in real-time: AIComment[] with severity, line numbers, clause violated.
+AIRecommendation[] generated with actionable remediation steps.
+Revised text shown in side-by-side diff viewer (react-diff-viewer-continued).
+Everything persisted to audit_log (append-only, tamper-proof).
+4.3.2 Standards Supported
+ISO 13485:2016 (Quality Management System for Medical Devices)
+IEC 62304:2015 (Medical Device Software Lifecycle)
+EU MDR 2017/745 (European Medical Devices Regulation)
+FDA 21 CFR 820 / QMSR (Quality System Regulation, effective Feb 2026)
+ISO 14971:2019 (Risk Management for Medical Devices)
+IEC 60601-1 (Medical Electrical Equipment Safety)
+Country-specific frameworks for all 15 target countries
+
+4.4 Agent 3: ROA — Regulatory Operations Agent ("The Navigator")
+CrewAI Config: role='Regulatory Operations Manager' | goal='Generate role-split compliance checklists with legal citations' | process=Sequential
+Built on: github.com/innolitics/rdm (Jinja2+Markdown templates for IEC 62304, ISO 14971, 510(k)). OrthoLink uses rdm's template engine for PDF generation.
+4.4.1 Output: Role-Split Checklist
+Every checklist item has: document_name, legal_citation (exact article/section), responsible_party (MANUFACTURER | IMPORTER | EXPORTER | DISTRIBUTOR), timeline, status (NOT_STARTED | IN_PROGRESS | COMPLETE), and AI-generated guidance notes. The checklist is exportable as a branded PDF via WeasyPrint.
+4.4.2 Regulatory Search Sub-Capability
+GET /api/v1/query?q=<question>&country=<country>
+Plain-English regulatory questions. Returns answer with exact legal citation. If confidence < 0.7, returns structured refusal instead of hallucinated answer.
+Example: "Is a bank statement required to register a Class IIb device in Ukraine?" → "Yes. Resolution 753, Article 14, Clause 3 requires 'Proof of Financial Stability,' which can be satisfied by a bank statement or audited financial report."
+
+4.5 Agent 4: RSA — Regulatory Strategy Agent ("The Strategist")
+CrewAI Config: role='Senior Regulatory Strategy Director' | goal='Optimize multi-country market entry' | process=Hierarchical (manager delegates to 4 sub-agents)
+This agent replaces $50K–$150K strategic RA consulting engagements. It is the highest-value agent and the primary driver of Enterprise-tier subscriptions. Adapted from Regulatory-Strategy-Agent repo (Planner→Retriever→Analyzer→Critic pattern, ported from Google ADK to CrewAI).
+4.5.1 Hierarchical Crew Architecture
+The Strategy Manager agent receives the manufacturer's device profile and target markets, then delegates to four specialist sub-agents:
+
+Sub-Agent | Role | Task | Tools Used | Output
+Pathway Analyst | Regulatory Pathway Identifier | Identify correct pathway per country (510(k)/PMA/De Novo, EU MDR route, CDSCO route, etc.) | search_vector_store, search_fda_database | pathway_map: {country: pathway, citation}
+Reuse Analyst | Document Reuse Specialist | Map existing docs against each country's requirements. Compute reuse percentage. | search_vector_store, compare_doc_inventory | reuse_matrix: {country: {reusable: [], modify: [], create: []}}
+Timeline Analyst | Regulatory Timeline Modeler | Estimate approval timelines using historical data (FDA ~130 days, EU NB review, etc.) | search_vector_store, lookup_historical_timelines | timeline_estimates: {country: {months, dependencies}}
+Cost Analyst | Market Entry Cost Estimator | Estimate fees: agency, NB, testing, translation, in-country agent. | search_vector_store, lookup_fee_schedules | cost_estimates: {country: {agency_fee, nb_fee, ...}}
+
+4.5.2 Predicate Finder (FDA-Specific)
+For FDA 510(k) submissions, the Pathway Analyst uses the fda_search tool (adapted from the uploaded fda-master scraper repo). This tool: (1) queries the FDA's public 510(k) database by product code and device description, (2) ranks candidate predicate devices by intended use alignment, technological similarity, recency of clearance, and recall history, (3) returns the top 5 candidates with clearance numbers, applicant names, and dates.
+This capability alone saves manufacturers $10K–$30K in consultant fees for predicate identification.
+4.5.3 Input: Device Profile (Persisted via CrewAI Entity Memory)
+Entered once, stored in Supabase device_profiles table AND CrewAI's entity memory for recall across sessions:
+device_name, description, intended_use, indications_for_use
+classification_current (e.g., "Class IIb under EU MDR")
+materials (e.g., "titanium alloy, PEEK, hydroxyapatite")
+existing_certifications (e.g., "CE Mark, ISO 13485, FDA 510(k) K210456")
+target_markets (selected from 15-country list)
+existing_doc_inventory (which Technical File sections exist)
+4.5.4 Output: StrategyReport (PDF + JSON)
+Optimal Entry Sequence: Countries ranked by time × cost × reuse% × revenue potential
+Document Reuse Matrix: Per-country breakdown of reusable/modify/create-new documents
+Submission Package Skeleton: Per-country table of contents with section descriptions and cross-references
+Predicate Analysis: Top 5 predicate candidates for FDA 510(k) with rationale
+Dependency Map: Which country's approval unlocks others (e.g., EU CE enables Ukraine CFS)
+
+4.6 Agent 5: RAA — Regulatory Alert Agent ("The Watchman")
+CrewAI Config: role='Regulatory Change Intelligence Analyst' | goal='Detect regulation changes, archive old versions, alert affected users' | process=Sequential
+Adapted from the ai-news-agent pattern (source monitoring → filter → prioritize → summarize). Instead of Bing News, monitors government gazette sites and regulatory agency databases.
+4.6.1 Pipeline: Scrape → Diff → Classify → Archive → Re-Embed → Notify
+Scrape: Re-fetch regulation text from government source URL (BeautifulSoup; Selenium fallback for JS sites).
+Diff: SHA-256 hash comparison of cleaned text against stored chunk_hash. If hash changed, identify specific changed sections.
+Classify: gpt-4o assesses change severity (Critical/Major/Minor) and identifies affected device classes.
+Archive: Mark old chunks is_active=false, set valid_to=today. NEVER delete old versions. (Audit requirement.)
+Re-Embed: Ingest changed sections through full pipeline (clean, chunk, translate, embed). New chunks get is_active=true.
+Notify: Send email via Resend + in-app notification to users subscribed to that country/class combination.
+4.6.2 Monitoring Schedule
+Daily: United States (FDA Federal Register, eCFR), European Union (EUR-Lex, Official Journal)
+Every 3 days: UK, Canada, Japan, Australia, India, Brazil
+Weekly: Ukraine, China (manual check), Russia (manual check), Switzerland, Mexico, South Korea, Saudi Arabia
+4.6.3 Innovation: CrewAI Memory for Change Context
+The Alert Agent uses CrewAI's long-term memory to remember previous changes. When a new change is detected, the agent can reference past changes to assess cumulative impact. For example: "This is the third amendment to EU MDR Annex IX in 6 months. Cumulative impact on Class III device manufacturers is now Critical." This contextual alerting is something no competitor offers.
+
+5. CrewAI Advanced Capabilities & Innovation
+5.1 Multi-Agent Crews (Beyond Single-Agent)
+
+Crew Name | Agents Orchestrated | Trigger | Use Case | Output
+full_market_entry | Strategy Manager + DVA + ROA | POST /api/v1/full-analysis | Manufacturer entering a new country. Single request generates strategy + verifies distributor + produces checklist. | MarketEntryPackage: strategy + gap_analysis + checklist combined
+distributor_audit | DVA + Alert Agent | POST /api/v1/audit-distributor | Quarterly distributor audit. Verify distributor claims AND check if regulations changed since last audit. | AuditReport: current gap_analysis + changes since last run
+submission_prep | Strategy + CRA + ROA | POST /api/v1/prep-submission | Full submission preparation. Strategy identifies pathway, CRA reviews existing docs, ROA generates missing doc checklist. | SubmissionPackage: pathway + reviewed docs + todo list
+competitive_intel | Alert Agent + Strategy | Cron-triggered | When a regulation changes, automatically re-run Strategy for all affected manufacturers' device profiles. | ProactiveAdvisory: "New EU MDR amendment affects your Class IIb devices. Updated strategy attached."
+consultant_batch | DVA (parallel) + ROA (parallel) | POST /api/v1/batch-analysis | Consultant serving 10 clients. Upload 10 CSVs for 10 countries. Run all in parallel. | BatchReport: 10 gap analyses + 10 checklists in single response
+
+5.2 CrewAI Flows (Pipeline Orchestration)
+CrewAI Flows enable chaining multiple crews into deterministic pipelines with conditional branching. OrthoLink uses Flows for:
+Onboarding Flow: New user signs up → system auto-generates a starter checklist for their first target country → sends welcome email with the checklist attached.
+Change Propagation Flow: Alert Agent detects change → identifies affected device_profiles → re-runs Strategy for each → sends personalized impact report to each manufacturer.
+Quality Gate Flow: CRA reviews a document → if Critical findings detected → auto-creates follow-up tasks → assigns to reviewer via approval workflow → notifies admin.
+5.3 CrewAI Memory Architecture
+
+Memory Type | Used By | What It Stores | Persistence
+Short-Term | All agents within a crew execution | Intermediate results, tool outputs, agent decisions during a single request | In-memory; discarded after crew.kickoff() returns
+Long-Term | Strategy Agent, Alert Agent | Device profiles, previous strategy outputs, change detection history | Supabase via CrewAI's memory storage adapter
+Entity Memory | Strategy Agent | Structured data about manufacturers, devices, certifications (extracted from conversations) | Supabase device_profiles table
+
+5.4 Future CrewAI Innovations (Post-Launch Roadmap)
+Autonomous Regulatory Research Agent: Given a new country not yet in the database, the agent uses web search tools to find the regulatory authority, identify key regulations, scrape them, and draft initial chunks for human review before embedding.
+Multi-Model Arbitration: Use CrewAI's multi-LLM support to have gpt-4o AND Claude Sonnet independently classify the same DVA item. If they disagree, route to human review. This dramatically reduces false positives.
+Customer Success Agent: Monitors usage patterns. If a user hasn't run a review in 30 days, proactively sends a summary of regulatory changes affecting their markets. Reduces churn.
+Regulatory Q&A Chatbot: CrewAI agent with conversational memory. Users ask follow-up questions about a previous DVA or ROA result. The agent has context from the original analysis.
+
+6. System Architecture (Complete Specification)
+6.1 Technology Stack
+
+Layer | Technology | Why This, Not That
+Frontend | React 18 + TypeScript + Vite + Tailwind CSS | Fork of Compliance-Reviewer. Dark theme. Streaming review display. NOT Next.js (SSR unnecessary for SPA dashboard).
+Backend | Python 3.11+ / FastAPI | Async-native. Auto OpenAPI docs. Pydantic validation. NOT Flask (no async). NOT Django (too heavy).
+Agent Framework | CrewAI (latest stable) | Multi-agent orchestration with memory, tools, structured outputs. NOT LangChain agents (less structured). NOT AutoGen (less mature).
+Embeddings | OpenAI text-embedding-3-large (3072 dims) | HC-1. Non-negotiable. Highest semantic resolution for legal terms. NOT text-embedding-3-small (1536 dims, insufficient). NOT local models.
+LLM | OpenAI gpt-4o | 128K context. Structured output (JSON mode). Function calling. NOT gpt-4o-mini (insufficient for legal reasoning). Configurable per-org for future Claude support.
+Vector Store | FAISS (CPU) + custom metadata filtering | Fast. No external dependency. NOT Pinecone (adds cost + external dependency). NOT Chroma (less battle-tested at scale).
+Database | Supabase Postgres + Row Level Security | Multi-tenant isolation at DB layer. Auth included. Real-time subscriptions. NOT raw Postgres (need auth). NOT Firebase (vendor lock-in).
+Auth | Supabase Auth | JWT. Magic link. Google OAuth. Password recovery. NOT Auth0 (cost). NOT custom JWT (security risk).
+Cache | Redis 7 | Rate limiting. Session tokens. Regulation caching. Standard choice.
+PDF | WeasyPrint + Jinja2 templates (rdm-derived) | HTML→PDF with CSS. NOT ReportLab (pixel-level layout pain). NOT Puppeteer (heavy dependency).
+Email | Resend | Transactional emails. Magic links. Change alerts. Team invites.
+Monitoring | Sentry (errors) + PostHog (analytics) | Remote visibility. Resolves build brief B4/G05.
+FDA Data | fda-scraper patterns (fda-master repo) | 510(k) database, GUDID, product classification search for predicate finding.
+Deployment | Docker Compose + Supabase Cloud + DigitalOcean | Single-command deploy. HTTPS via Let's Encrypt. 4GB RAM, 2 vCPU, $24/mo.
+
+6.2 Complete API Specification
+
+Method | Endpoint | Auth | Agent | Request Body | Response
+POST | /api/v1/verify-distributor | JWT | DVA | CSV file + country + device_class | GapAnalysisReport (JSON)
+POST | /api/v1/review-document | JWT | CRA | File + standard(s) + country | SSE stream of AIComment[]
+POST | /api/v1/generate-checklist | JWT | ROA | country + device_class + device_type | RoleSplitChecklist (JSON)
+GET | /api/v1/query | JWT | ROA | ?q=<question>&country=<country> | RegulatoryAnswer (JSON)
+POST | /api/v1/plan-strategy | JWT | RSA | DeviceProfile + target_markets[] | StrategyReport (JSON)
+POST | /api/v1/check-changes | JWT (admin) | RAA | country (optional) | ChangeAlertBatch (JSON)
+POST | /api/v1/full-analysis | JWT | All | DeviceProfile + CSV + country | MarketEntryPackage (JSON)
+POST | /api/v1/batch-analysis | JWT | DVA+ROA | List of {csv, country, class} | BatchReport (JSON)
+POST | /api/v1/export-pdf | JWT | Any | analysis_id + report_type | PDF file download
+POST | /api/v1/auth/signup | Public | — | email + password | Supabase session
+POST | /api/v1/auth/login | Public | — | email + password | JWT tokens
+POST | /api/v1/auth/magic-link | Public | — | email | Magic link sent
+GET | /api/v1/auth/me | JWT | — | — | User + org + role + trial_status
+POST | /api/v1/admin/provision | Admin JWT | — | org_name + email + plan_tier | Org created + magic link sent
+GET | /api/v1/admin/orgs | Admin JWT | — | — | List of orgs with usage metrics
+GET | /api/v1/history | JWT | All | ?agent=&country=&page= | Paginated analysis history
+GET | /api/v1/alerts | JWT | RAA | — | User's pending regulatory alerts
+GET | /api/v1/countries | Public | All | — | Supported countries with metadata
+
+
+7. Build Brief: 22 Gaps Resolved
+The Compliance-Reviewer codebase (our frontend foundation) has 4 active blockers and 22 identified gaps. OrthoLink's architecture resolves ALL of them. This table is your checklist.
+
+ID | Gap | Resolution | Milestone | Verification
+B1 | API keys exposed in browser | FastAPI proxy. Frontend calls /api/v1/analyze. Keys in server env vars. | M1 | Network tab: zero direct OpenAI calls
+B2 | Data in IndexedDB only | Supabase Postgres + RLS. IndexedDB as offline cache only. | M1 | Clear cache, login on new device, data persists
+B3 | Anyone changes provider config | RBAC: Admin/Reviewer/Viewer. org_provider_config table. | M1 | Non-admin cannot access Settings writes
+B4 | No remote monitoring | Sentry + PostHog + append-only audit_log. | M1 | Sentry dashboard shows events
+G01 | No AI proxy | POST /api/v1/analyze with SSE streaming. | M1 | Same as B1
+G02 | Fake auth | Supabase Auth: email, magic link, Google OAuth. | M1 | Magic link login works end-to-end
+G03 | No database | Supabase Postgres schema (12 tables, RLS). | M1 | Query Supabase, see persisted data
+G04 | No RBAC | org_members.role + middleware enforcement. | M1 | Role test: viewer cannot run review
+G05 | No telemetry | Sentry + PostHog. | M1 | Dashboard shows real usage data
+G06 | Deletable audit logs | audit_log with REVOKE DELETE. | M1 | SQL: DELETE FROM audit_log returns permission denied
+G07 | No multi-tenancy | organizations + org_members + RLS. | M1 | Org A cannot query Org B data
+G08 | Provider config in localStorage | org_provider_config Postgres table. | M1 | Config persists across devices
+G09 | Main-thread doc parsing | Web Worker: documentParser.worker.ts. | M2 | Large PDF upload: no UI freeze
+G10 | Silent parse failures | Parse warnings surfaced in UI. | M2 | Malformed doc shows warning banner
+G11 | Duplicate findings | NLP dedup in reviewParser or backend. | M4 | Same finding appears once, not 3x
+G12 | No PDF export | WeasyPrint via /api/v1/export-pdf. | M2 | Download button produces valid PDF
+G13 | No export bundles | ZIP + XLSX + CSV export endpoints. | M5 | Batch export downloads ZIP
+G14 | No report filters | Server-side filtering on Reports page. | M5 | Filter by country, severity, agent works
+G15 | Limited AI providers | Add Anthropic Claude adapter. | M5 | Claude selected in admin, reviews work
+G16 | Generic prompts | RAG-grounded prompt templates per standard. | M2 | Findings cite specific clause numbers
+G17 | No approval workflow | approval_state on review_runs. | M4 | Reviewer approves/rejects findings
+G18 | No unit tests | Vitest + pytest suites. | M4 | npm test + pytest both pass
+G19 | No V&V docs | IQ/OQ/PQ protocols in docs/validation/. | M4 | Protocols exist and are executable
+G20 | No deployment | Docker Compose + HTTPS + Supabase Cloud. | M1 | Live URL accessible
+G21 | Wrong branding | Rebrand ComplianceAI → OrthoLink. | M2 | AppLogo, index.html, prompts updated
+G22 | No Jira/Confluence | backend/connectors/ for automated ingestion. | M5 | Jira doc auto-imported
+
+
+8. Non-Negotiable Technical Constraints
+Violating ANY of these is a contract-ending event. These are derived from lessons learned (Section 2) and core product requirements.
+
+ID | Constraint | Why | Verification Command
+HC-1 | Embeddings: text-embedding-3-large (3072 dims). No local models. No "small" variant. | Local embeddings produce inferior retrieval. Previous contractor used local to "save credits" and all results were invalid. | grep -r 'text-embedding' backend/ | grep -v 'large' should return NOTHING
+HC-2 | ZERO hardcoded dictionaries in classification logic. No COMMERCIAL_ITEMS set. No UA_ITEM_TERMS dict. | Previous contractor's entire classification was dictionary-driven. LLM was decorative. The product must classify ANY input semantically. | grep -rn 'COMMERCIAL_ITEMS\|UA_ITEM_TERMS\|KNOWN_ITEMS' backend/ should return NOTHING
+HC-3 | Chunking preserves legal hierarchy (Article/Section/Clause). No arbitrary token splitting. | Token-split chunks produce citations like "Article 12... [truncated]" which are useless and potentially dangerous. | python scripts/audit_chunks.py --country Ukraine --sample 10 (all 10 must have valid section_path)
+HC-4 | Safe refusal: out-of-scope queries return structured refusal, not hallucinated answers. | A regulatory tool that guesses is worse than no tool. Previous contractor's refusal logic was not connected to classification. | pytest tests/test_refusal.py (nuclear fuel rod query returns {status: REFUSED})
+HC-5 | All secrets in env vars. .env in .gitignore. NEVER committed to git. | Previous contractor committed .env with API keys to the repo. | git log --all --full-history -- .env should return NOTHING
+HC-6 | Daily commits to dev branch during active development. | Previous contractor had 9 commits for an entire MVP. Could not verify progress. | git log --oneline | wc -l should increase daily
+HC-7 | Every LLM output carries disclaimer: "Reference tool only. Verify with official sources." | Legal liability protection. Non-negotiable. | grep -r 'Reference tool only' backend/ returns matches in every agent output
+HC-8 | Append-only audit_log. REVOKE DELETE at Postgres level. | Build brief requirement B4/G06. Users cannot erase their audit trail. | psql: DELETE FROM audit_log; returns "permission denied"
+HC-9 | Multi-tenant isolation via Supabase RLS. Org A cannot see Org B. | Build brief G07. Enforced at database layer, not application logic. | Playwright: login as Org A, request Org B data, get 403
+HC-10 | API keys never in frontend code. All AI calls route through FastAPI. | Build brief B1. Browser network tab must show zero direct OpenAI/Anthropic calls. | Chrome DevTools: filter network by "openai.com" returns 0 results
+
+
+9. Data Architecture
+9.1 Supabase Postgres Schema (12 Tables)
+Every table has org_id for multi-tenant isolation via RLS. Schema is defined in supabase/migrations/.
+
+Table | Key Columns | RLS Policy | Purpose
+organizations | id, name, slug, plan_tier, created_at | Admin: full access. Members: read own org. | One row per customer.
+org_members | id, org_id, user_id, role (admin|reviewer|viewer) | Users can read own membership. Admin can write. | Team management + RBAC.
+org_invites | id, org_id, email, role, token, expires_at | Admin can create. Invited user can read own. | Magic link invitations.
+org_provider_config | id, org_id, provider, model, api_key_enc, updated_by | Admin can read/write. Others: read-only. | AI provider settings per org.
+review_runs | id, org_id, user_id, agent, country, device_class, input_hash, output_json, approval_state, created_at | Members: read own org. Reviewer+: create. | Every analysis result stored here.
+audit_log | id, org_id, user_id, action_type, review_run_id, ai_model, prompt_hash, timestamp, outcome | REVOKE DELETE. All members: insert. Read own org. | Tamper-proof audit trail (21 CFR Part 11).
+usage_events | id, org_id, user_id, event_type, agent, tokens_used, created_at | System insert. Admin read. | Usage metering for billing + rate limiting.
+device_profiles | id, org_id, name, description, classification, certifications, target_markets, doc_inventory | Members: CRUD own org. | Persistent device profiles for Strategy Agent.
+alert_subscriptions | id, org_id, user_id, countries[], device_classes[], notification_method | Members: CRUD own. | Which users get which regulatory change alerts.
+regulatory_changes | id, country, regulation_id, change_type, severity, summary, old_hash, new_hash, detected_at | Public read. System insert. | Log of all detected regulatory changes.
+customer_feedback | id, org_id, user_id, agent, rating, comment, created_at | Members: insert own. Admin: read all. | Product improvement data.
+api_keys | id, org_id, key_hash, permissions, rate_limit, created_at, last_used | Admin: CRUD. | Enterprise API access (future).
+
+9.2 FAISS Vector Store: Chunk Metadata Schema
+Every embedded chunk carries structured metadata for filtering and citation. This metadata is what makes OrthoLink's retrieval precise rather than generic.
+
+Field | Type | Example | Used By
+country | string | Ukraine | All agents: country-level filtering
+document_id | string | UA-RES-753 | Citation generation
+document_title | string | Resolution 753: Technical Regulation on Medical Devices | Human-readable source
+section_path | string | Part II > Chapter 3 > Article 12 > Clause 12.3 | Full hierarchy for precise citation
+article_number | string | 12 | Article-level filtering
+clause_number | string | 12.3.1 | Clause-level precision
+device_classes_applicable | list[str] | ["IIa", "IIb", "III"] | Filter by device class
+valid_from | date | 2024-01-15 | Version management
+valid_to | date|null | null (active) | null = current version
+is_active | boolean | true | Only active chunks returned by default
+language_original | string | uk | ISO 639-1 code
+chunk_hash | string | sha256:abc123... | Change detection by Alert Agent
+parent_chunk_id | string|null | UA-RES-753-ART-12 | Parent Document Retriever linkage
+
+9.3 Document Ingestion Pipeline (Per Country)
+Acquire: Scrape government website (BeautifulSoup; Selenium fallback for JS-rendered). For geo-blocked sources (China NMPA, Russia Roszdravnadzor): manual PDF upload.
+Validate: Scraper validation step. Minimum word count (>500 words). Presence of legal keywords ("Article", "requirement", "manufacturer"). Log WARNING if sanity check fails. Do not embed garbage.
+Clean: Strip navigation, cookie banners, browser warnings, footer boilerplate. If clean_text contains "Firefox" or "Google Chrome", the scraper has failed. (Previous contractor's scraper did not catch this.)
+Translate: Non-English docs → English via gpt-4o with regulatory term preservation. Original language retained in metadata. NOT Google Translate (loses legal precision).
+Chunk: Split at Article/Section boundaries (NOT token count). Every chunk carries full metadata schema. Parent Document Retriever pattern: child clauses for search, full parent article for generation.
+Embed: text-embedding-3-large (3072 dims) → FAISS with metadata index. Persist index to disk.
+Audit: After ingestion, run chunk_audit.py: sample 10 random chunks, verify metadata correctness, verify text is clean legal content. Log results. This is how we caught the previous contractor's failures.
+
+10. User Experience
+10.1 Customer Provisioning (Admin-Side)
+POST /api/v1/admin/provision (or python scripts/provision_customer.py):
+Create organizations row (org_name, slug, plan_tier).
+Create Supabase Auth user with customer's email.
+Insert org_members (role=admin).
+Seed org_provider_config (default: gpt-4o). Customer never configures AI settings.
+Generate magic link. Send branded welcome email via Resend.
+Total time: 30 seconds. Customer receives one email. Clicks one link. Lands on dashboard.
+10.2 Dashboard Design Principles
+Five agent cards with human-readable names and one-sentence descriptions. No AI jargon.
+Upload button: largest, most prominent element. "Upload your document" not "Select artifact type."
+Zero references to OpenAI, Groq, or any AI provider in customer-facing UI.
+One-paragraph explainer on first load for users who have never used AI tools.
+Country and device class dropdowns pre-populated based on org's device profile (if entered).
+10.3 Free Trial
+15 analyses across all agents. No credit card required. All features fully functional. After trial, subscription prompt. Trial usage tracked in usage_events table.
+
+11. Milestones (Full Product Build, 12 Weeks)
+M1: Foundation + DVA (Weeks 1–3)
+Goal: Deployed platform with auth, multi-tenancy, and the first agent solving Helton's #1 problem.
+FastAPI backend with AI proxy (resolves B1/G01)
+Supabase Auth + Postgres + RLS (resolves B2/G02/G03/G04/G07/G08)
+RBAC: Admin/Reviewer/Viewer (resolves B3)
+Append-only audit_log (resolves B4/G06)
+Sentry + PostHog (resolves G05)
+Ukraine Res. 753–755 + FDA 21 CFR 801–820 + QMSR ingested, chunked, embedded
+DVA agent (CrewAI Sequential) with full 7-step pipeline
+Admin provisioning script
+Docker Compose deployment on DigitalOcean with HTTPS (resolves G20)
+pytest: DVA accuracy, anti-hallucination, country isolation, auth, RBAC
+Acceptance: Helton logs in via magic link. Uploads Ukraine CSV. Gets gap analysis with citations in <15 seconds. "Bank Statement" = REQUIRED. "Certificate of Free Sale" = REQUIRED. Nuclear fuel rod query = REFUSED. pytest green.
+M2: CRA + ROA + Frontend (Weeks 4–5)
+CRA agent with RAG-grounded streaming review (resolves G16)
+ROA agent with role-split checklists + WeasyPrint PDF export (resolves G12)
+Frontend: 5 agent tabs, simplified dashboard, Web Worker parsing (resolves G09/G10)
+Rebrand: ComplianceAI → OrthoLink (resolves G21)
+India CDSCO MDR 2017 ingested (Helton scenario #3)
+Acceptance: Texas importer checklist: ≥15 items, role-split, PDF exports. India DVA+ROA two-agent workflow. CRA streams findings for design history file. Country isolation verified.
+M3: Strategy Agent + 15 Countries (Weeks 6–8)
+RSA agent (Hierarchical CrewAI) with Pathway/Reuse/Timeline/Cost sub-agents
+Device profile persistence (Supabase + CrewAI entity memory)
+Remaining 13 countries ingested, translated, embedded
+FDA predicate finder using fda-scraper patterns
+Strategy report PDF with pathway map, reuse matrix, timelines, costs
+Acceptance: BRM device profile + 5 target countries produces ranked entry sequence. Document reuse percentages computed. Predicate candidates found for FDA 510(k). 10 random chunks per country pass audit.
+M4: Alert Agent + Quality (Weeks 9–10)
+RAA agent: scrape → diff → classify → archive → re-embed → notify
+Cron scheduling (daily/3-day/weekly by tier)
+Version archiving (old chunks preserved, never deleted)
+Email alerts via Resend + in-app notifications
+NLP deduplication for CRA (resolves G11)
+Human-in-the-loop approval workflow (resolves G17)
+Vitest + pytest comprehensive suites (resolves G18)
+V&V documentation: IQ/OQ/PQ protocols (resolves G19)
+Acceptance: Modified regulation detected, old version archived, alert sent. Approval workflow works. All tests pass.
+M5: Scale + Launch (Weeks 11–12)
+Full market entry crew (/api/v1/full-analysis)
+Batch analysis for consultants (/api/v1/batch-analysis)
+Export bundles: ZIP/XLSX/CSV (resolves G12/G13)
+Report filters (resolves G14)
+Anthropic Claude adapter (resolves G15)
+Admin panel with org usage metrics
+Jira/Confluence connectors (resolves G22)
+Playwright e2e test suite (all 5 agents)
+Loom walkthrough on live production URL
+Customer handoff documentation
+FINAL ACCEPTANCE: Live HTTPS URL. All 3 Helton scenarios pass on production. Multi-org isolation verified. All 22 build brief gaps resolved. All 10 HC constraints verified. pytest + Playwright green. Loom recorded.
+
+12. Repository Structure
+ortholink/
+├─ frontend/                         # Fork of Compliance-Reviewer
+│  ├─ src/components/               # DocumentUploader, DVAPanel, CRAPanel, ROAPanel, RSAPanel, AlertsPanel
+│  ├─ src/context/                  # AuthContext (Supabase), AISettingsContext (DB-backed)
+│  ├─ src/pages/                    # Dashboard, Settings, Reports, Auth, AuthCallback, Landing, Profile
+│  ├─ src/services/                 # aiService (proxy), reviewStore (Supabase), alertService
+│  ├─ src/workers/                  # documentParser.worker.ts
+│  └─ src/styles/                   # Tailwind config, OrthoLink dark theme
+├─ backend/
+│  ├─ app/main.py                   # FastAPI app factory, CORS, Sentry init
+│  ├─ app/crews/                    # CrewAI crew definitions (one file per crew)
+│  │  ├─ verify_distributor.py     # DVA Sequential crew
+│  │  ├─ review_document.py       # CRA Sequential crew
+│  │  ├─ generate_checklist.py    # ROA Sequential crew
+│  │  ├─ plan_strategy.py         # RSA Hierarchical crew (manager + 4 sub-agents)
+│  │  ├─ monitor_regulations.py   # RAA Sequential crew
+│  │  ├─ full_market_entry.py     # Combined crew (Strategy + DVA + ROA)
+│  │  └─ batch_analysis.py        # Parallel DVA+ROA for consultants
+│  ├─ app/agents/                   # CrewAI Agent classes (role, goal, backstory, tools, llm)
+│  │  ├─ dva_agent.py
+│  │  ├─ cra_agent.py
+│  │  ├─ roa_agent.py
+│  │  ├─ strategy_agents.py       # Manager + Pathway + Reuse + Timeline + Cost agents
+│  │  └─ alert_agent.py
+│  ├─ app/tools/                    # Python @tool functions for CrewAI agents
+│  │  ├─ vector_store.py          # FAISS search + metadata filtering
+│  │  ├─ embeddings.py            # text-embedding-3-large wrapper (HC-1 enforced here)
+│  │  ├─ llm.py                   # gpt-4o structured output wrapper
+│  │  ├─ similarity.py            # Cosine similarity computation
+│  │  ├─ fda_search.py            # 510(k) predicate finder (from fda-master patterns)
+│  │  ├─ pdf_generator.py         # WeasyPrint + Jinja2 templates
+│  │  └─ alert_tools.py           # Scrape, diff, archive, re-embed, notify
+│  ├─ app/core/
+│  │  ├─ anti_hallucination.py    # Confidence gating + structured refusal
+│  │  └─ config.py                # Pydantic Settings (loads .env)
+│  ├─ app/ingestion/
+│  │  ├─ scraper.py               # BeautifulSoup + Selenium fallback
+│  │  ├─ scraper_validator.py     # Sanity checks: word count, keyword presence, noise detection
+│  │  ├─ translator.py            # gpt-4o translation with term preservation
+│  │  ├─ chunker.py               # Hierarchy-preserving chunker (Article/Section/Clause)
+│  │  ├─ embedder.py              # Batch embedding + FAISS index builder
+│  │  └─ chunk_audit.py           # Post-ingestion validation (10 random samples per country)
+│  ├─ app/routes/                   # FastAPI route handlers (one file per domain)
+│  ├─ app/middleware/                # auth.py (JWT verify), rbac.py (role enforcement)
+│  ├─ app/services/                 # audit_logger.py, usage_metering.py, email_service.py
+│  ├─ scripts/
+│  │  ├─ provision_customer.py    # Admin: create org + seed user + magic link
+│  │  └─ ingest_country.py        # CLI: scrape + clean + chunk + embed one country
+│  └─ tests/                        # pytest: per-agent, integration, e2e, anti-hallucination
+├─ regulatory/                       # innolitics/rdm (git submodule)
+├─ supabase/migrations/              # SQL: schema + RLS + audit_log policies
+├─ data/ (raw/, processed/, embeddings/, archive/)
+├─ docker-compose.yml
+├─ .env.example                      # Placeholder values (NEVER commit .env itself)
+├─ .gitignore                        # MUST include: .env, data/embeddings/, node_modules/
+└─ README.md                         # Setup, deployment, architecture overview
+
+13. Testing Strategy
+
+Test | Framework | Assertion | Milestone
+test_bank_statement_semantic | pytest | DVA: "Bank Statement" classified REQUIRED (semantic match to "Financial Proof", Res. 753) | M1
+test_cfs_not_commercial | pytest | DVA: "Certificate of Free Sale" classified REQUIRED (NOT EXTRA, NOT COMMERCIAL) | M1
+test_extra_detection | pytest | DVA: "Distributor's Pet Photo" classified EXTRA with no citation | M1
+test_nuclear_refusal | pytest | ROA query "nuclear fuel rod requirements" returns {status: REFUSED} | M1
+test_country_isolation | pytest | Ukraine query returns 0 FDA results; FDA query returns 0 Ukraine results | M1
+test_no_hardcoded_dicts | grep | grep -rn 'COMMERCIAL_ITEMS' backend/ returns NOTHING | M1
+test_embedding_model | grep | grep -r 'text-embedding' backend/ only shows 'text-embedding-3-large' | M1
+test_env_not_committed | git | git log --all -- .env returns NOTHING | M1
+test_rbac_viewer | pytest | Viewer role: POST /api/v1/verify-distributor returns 403 | M1
+test_audit_no_delete | psql | DELETE FROM audit_log returns permission denied | M1
+test_texas_checklist | pytest | ROA: US Class II checklist ≥15 items, Importer∩Exporter=∅, all cite 21 CFR | M2
+test_pdf_export | pytest | WeasyPrint PDF opens without errors, contains all sections | M2
+test_cra_streaming | httpx | SSE stream produces valid AIComment[] with severity + citations | M2
+test_india_two_agent | pytest | DVA+ROA for India: completes in <30 seconds | M2
+test_strategy_5_countries | pytest | RSA: 5 countries produces ranked sequence with reuse%, timelines, costs | M3
+test_predicate_finder | pytest | RSA: orthopedic implant returns ≥3 predicate candidates from FDA | M3
+test_change_detection | pytest | RAA: modified regulation detected, old archived, alert generated | M4
+test_multi_org_isolation | Playwright | Org A login, request Org B data, get 403 | M4
+test_full_e2e | Playwright | Magic link → DVA → CRA → ROA → RSA → Alerts → PDF export | M5
+test_batch_analysis | pytest | 10 CSVs submitted, 10 gap analyses returned | M5
+
+
+14. Codebase Integration References
+
+Repository | Integration Role
+github.com/Dineshkumar-Ponnusamy/Compliance-Reviewer | Frontend SPA (React 18 + TS + Vite). Document upload, streaming review, dark theme. 22 gaps resolved by OrthoLink backend.
+deepwiki.com/Dineshkumar-Ponnusamy/Compliance-Reviewer | Architecture docs, component maps, data flows for engineering reference.
+github.com/innolitics/rdm | Regulatory doc-as-code templates (IEC 62304, 14971, 510(k)). Jinja2+Markdown→PDF for checklist/strategy exports.
+github.com/crewAIInc/crewAI | Multi-agent orchestration. Sequential + Hierarchical processes. Memory. Tools. Structured outputs.
+Regulatory-Strategy-Agent-main.zip | Planner→Retriever→Analyzer→Critic pipeline pattern. Adapted from Google ADK to CrewAI for RSA.
+ai-news-agent-main.zip | Automated monitoring + alerting pattern. Adapted from Bing News to regulatory source monitoring for RAA.
+fda-SCRAPER-OLD.zip (fda-master) | FDA 510(k) database scraper. Predicate device search for Strategy Agent.
+github.com/harindermashiana/sec-10q-rag | Original RAG architecture reference. LangChain + FAISS. Adapted for regulatory domain.
+github.com/yashkhadilkar/medical-device-rag-navigator | FDA medical device RAG. Prompt patterns and classification rules reusable.
+RPO.docx (Regulatory Pathway Optimizer brief) | Strategy Agent feature specs: pathway optimization, document reuse, submission assembly, pricing tiers.
+Build Brief (tiiny.host) | 48-hour sprint plan, 22-gap register, stack decisions, customer provisioning spec, multi-tenant architecture.
+
+
+ORTHOLINK — The Regulatory Intelligence Backbone
+Five Agents. Fifteen Countries. Three User Types. Zero Questions.
+Built for manufacturers. Built for distributors. Built for consultants.
+
+
+--- HEADERS/FOOTERS ---
+[HEADER]: ORTHOLINK PRD V5.0 — FINAL ENGINEERING SPECIFICATION	CONFIDENTIAL
+[FOOTER]: Page 

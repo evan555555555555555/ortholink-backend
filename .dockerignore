@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+scripts/
+*.egg-info/
+.git/
+.env
+.env.*
+data/embeddings/
+htmlcov/
+coverage.xml

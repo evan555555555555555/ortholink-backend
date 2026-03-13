@@ -1,0 +1,25 @@
+# Env (never commit — API keys)
+.env
+.env.local
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# FAISS / data
+faiss_index/
+*.faiss
+*.pkl
+data/embeddings/
+data/raw/
+data/processed/
+data/archive/
+
+# Build / IDE
+dist/
+.idea/
+.vscode/
+.pytest_cache/
