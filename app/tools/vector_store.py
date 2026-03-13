@@ -204,6 +204,7 @@ class VectorStore:
 
     def _get_chunk(self, idx: int) -> Optional[ChunkMetadata]:
         """Get chunk metadata by FAISS index — from SQLite or in-memory list."""
+        idx = int(idx)  # Ensure Python int (numpy.int64 breaks sqlite3 binding)
         if self._use_db and self._metadata_db:
             data = self._metadata_db.get(idx)
             if data is None:
@@ -280,7 +281,7 @@ class VectorStore:
             if idx == -1:
                 continue
 
-            chunk = self._get_chunk(idx)
+            chunk = self._get_chunk(int(idx))
             if chunk is None:
                 continue
 
