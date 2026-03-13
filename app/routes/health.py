@@ -39,10 +39,12 @@ async def health_check():
 
 @router.get("/health/faiss-debug")
 async def faiss_debug():
-    """FAISS diagnostic — no auth. Returns index stats + test search."""
+    """FAISS diagnostic — no auth. Tests each step of search pipeline."""
+    import numpy as np
     diag: dict = {}
     try:
         from app.tools.vector_store import get_vector_store
+        import faiss as faiss_lib
         store = get_vector_store()
         store._ensure_loaded()
         diag["index_loaded"] = store.index is not None
@@ -51,21 +53,64 @@ async def faiss_debug():
         diag["use_db"] = store._use_db
         diag["sqlite_count"] = store._metadata_db.count() if store._metadata_db else 0
 
-        # Test: try a search to see if embed_text + FAISS work end-to-end
-        if store.index and store.index.ntotal > 0:
+        if not store.index or store.index.ntotal == 0:
+            diag["abort"] = "index has 0 vectors"
+            return diag
+
+        # Step 1: Test embed_text
+        try:
+            from app.tools.embeddings import embed_text
+            emb = embed_text("medical device registration")
+            diag["embed_ok"] = True
+            diag["embed_shape"] = list(emb.shape)
+            diag["embed_dtype"] = str(emb.dtype)
+            diag["embed_norm"] = float(np.linalg.norm(emb))
+        except Exception as e:
+            diag["embed_ok"] = False
+            diag["embed_error"] = str(e)[:300]
+            return diag
+
+        # Step 2: Raw FAISS search (no country filter)
+        try:
+            qvec = emb.reshape(1, -1).copy()
+            faiss_lib.normalize_L2(qvec)
+            scores, indices = store.index.search(qvec, 10)
+            raw_indices = [int(idx) for idx in indices[0] if idx != -1]
+            raw_scores = [float(s) for s, idx in zip(scores[0], indices[0]) if idx != -1]
+            diag["raw_faiss_hits"] = len(raw_indices)
+            diag["raw_faiss_top_indices"] = raw_indices[:5]
+            diag["raw_faiss_top_scores"] = raw_scores[:5]
+        except Exception as e:
+            diag["raw_faiss_error"] = str(e)[:300]
+            return diag
+
+        # Step 3: Check metadata for those raw hits
+        if raw_indices:
             try:
-                results = store.search("medical device registration", "US", top_k=3)
-                diag["test_search_results"] = len(results)
-                if results:
-                    diag["test_search_top_score"] = results[0].get("score")
-                    diag["test_search_top_reg"] = results[0].get("regulation_name", "")[:80]
-                else:
-                    diag["test_search_results"] = 0
-                    diag["test_search_error"] = "empty results despite index.ntotal > 0"
+                countries_found = []
+                for idx in raw_indices[:5]:
+                    chunk = store._get_chunk(idx)
+                    if chunk:
+                        countries_found.append(chunk.country)
+                    else:
+                        countries_found.append(f"MISSING_IDX_{idx}")
+                diag["raw_hit_countries"] = countries_found
             except Exception as e:
-                diag["test_search_error"] = str(e)[:200]
-        else:
-            diag["test_search_skipped"] = "index has 0 vectors"
+                diag["metadata_lookup_error"] = str(e)[:200]
+
+        # Step 4: Full search with country filter
+        try:
+            results = store.search("medical device registration", "US", top_k=3)
+            diag["full_search_results"] = len(results)
+            if results:
+                diag["full_search_top"] = {
+                    "score": results[0].get("score"),
+                    "regulation": results[0].get("regulation_name", "")[:80],
+                    "country": results[0].get("country"),
+                }
+        except Exception as e:
+            diag["full_search_error"] = str(e)[:300]
+
     except Exception as e:
         diag["load_error"] = str(e)[:200]
     return diag
