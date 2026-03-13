@@ -81,6 +81,39 @@ class MetadataDB:
         conn = self._ensure_conn()
         return conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
 
+    def count_by_country(self, country: str) -> int:
+        """Count chunks for a specific country."""
+        conn = self._ensure_conn()
+        return conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE UPPER(json_extract(data, '$.country')) = ?",
+            (country.upper(),),
+        ).fetchone()[0]
+
+    def get_all_countries(self) -> list[str]:
+        """Get distinct country codes."""
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT json_extract(data, '$.country') FROM chunks"
+        ).fetchall()
+        return [r[0] for r in rows if r[0]]
+
+    def iter_by_country(
+        self, country: str, active_only: bool = True
+    ) -> list[tuple[int, dict]]:
+        """Iterate all chunks for a country. Returns (idx, parsed_dict) pairs."""
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT idx, data FROM chunks WHERE UPPER(json_extract(data, '$.country')) = ?",
+            (country.upper(),),
+        ).fetchall()
+        results = []
+        for idx, raw in rows:
+            d = json.loads(raw)
+            if active_only and not d.get("is_active", True):
+                continue
+            results.append((idx, d))
+        return results
+
     def close(self):
         if self._conn:
             self._conn.close()

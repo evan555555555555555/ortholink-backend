@@ -73,13 +73,8 @@ def _collect_integrity_status() -> dict[str, Any]:
         store = get_vector_store()
         store._ensure_loaded()
 
-        chunk_count = len(store.metadata) if hasattr(store, "metadata") else 0
-        countries = set()
-        if hasattr(store, "metadata") and store.metadata:
-            for m in store.metadata:
-                c = getattr(m, "country", None)
-                if c:
-                    countries.add(c)
+        chunk_count = store.get_chunk_count()
+        countries = set(store.get_countries())
 
         # Verify signer is functional by checking secret availability
         signer_ok = False

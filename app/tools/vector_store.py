@@ -356,11 +356,17 @@ class VectorStore:
     def get_countries(self) -> list[str]:
         """Get list of all countries in the index."""
         self._ensure_loaded()
+        if self._use_db and self._metadata_db:
+            return self._metadata_db.get_all_countries()
         return list(set(m.country for m in self.metadata))
 
     def get_chunk_count(self, country: Optional[str] = None) -> int:
         """Get count of chunks, optionally filtered by country."""
         self._ensure_loaded()
+        if self._use_db and self._metadata_db:
+            if country:
+                return self._metadata_db.count_by_country(country)
+            return self._metadata_db.count()
         if country:
             return sum(1 for m in self.metadata if m.country.upper() == country.upper())
         return len(self.metadata)
@@ -378,6 +384,23 @@ class VectorStore:
         """
         self._ensure_loaded()
         out = []
+
+        if self._use_db and self._metadata_db:
+            for idx, d in self._metadata_db.iter_by_country(country, active_only):
+                if device_class and d.get("device_classes"):
+                    if device_class not in d["device_classes"]:
+                        continue
+                out.append({
+                    "index": idx,
+                    "chunk_id": d.get("chunk_id", ""),
+                    "text": d.get("text", ""),
+                    "regulation_name": d.get("regulation_name", ""),
+                    "article": d.get("article", ""),
+                    "clause": d.get("clause"),
+                    "country": d.get("country", ""),
+                })
+            return out
+
         for i, chunk in enumerate(self.metadata):
             if chunk.country.upper() != country.upper():
                 continue
@@ -411,6 +434,27 @@ class VectorStore:
         """
         self._ensure_loaded()
         out = []
+
+        if self._use_db and self._metadata_db:
+            for idx, d in self._metadata_db.iter_by_country(country, active_only):
+                if document_id and (d.get("document_id") or "").strip() != (document_id or "").strip():
+                    continue
+                if source_url and (d.get("source_url") or "").strip() != (source_url or "").strip():
+                    continue
+                out.append({
+                    "index": idx,
+                    "chunk_id": d.get("chunk_id", ""),
+                    "chunk_hash": d.get("chunk_hash"),
+                    "text": d.get("text", ""),
+                    "regulation_name": d.get("regulation_name", ""),
+                    "article": d.get("article", ""),
+                    "clause": d.get("clause"),
+                    "country": d.get("country", ""),
+                    "document_id": d.get("document_id"),
+                    "source_url": d.get("source_url"),
+                })
+            return out
+
         for i, chunk in enumerate(self.metadata):
             if chunk.country.upper() != country.upper():
                 continue

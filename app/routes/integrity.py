@@ -77,14 +77,8 @@ def integrity_status(
         from app.tools.vector_store import get_vector_store
         store = get_vector_store()
         store._ensure_loaded()
-        if hasattr(store, "metadata") and store.metadata:
-            chunk_count = len(store.metadata)
-            countries = set()
-            for m in store.metadata:
-                c = getattr(m, "country", None) or (m.get("country") if isinstance(m, dict) else None)
-                if c:
-                    countries.add(c)
-            country_count = len(countries)
+        chunk_count = store.get_chunk_count()
+        country_count = len(store.get_countries())
     except Exception:
         pass  # graceful degradation — return zeros rather than crash
 
