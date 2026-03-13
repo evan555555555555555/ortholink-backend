@@ -179,7 +179,18 @@ async def faiss_debug():
         except Exception as e:
             diag["manual_search_error"] = str(e)[:300]
 
-        # Step 7: Test store.search() (calls embed_text internally)
+        # Step 7: Second embed_text call to test if it fails
+        try:
+            emb2 = embed_text("medical device registration")
+            diag["embed2_ok"] = True
+            diag["embed2_norm"] = float(np.linalg.norm(emb2))
+            # Check if embeddings are identical
+            diag["embed_match"] = bool(np.allclose(emb, emb2, atol=1e-5))
+        except Exception as e:
+            diag["embed2_ok"] = False
+            diag["embed2_error"] = str(e)[:500]
+
+        # Step 8: Test store.search() (calls embed_text internally — 3rd call)
         try:
             results = store.search("medical device registration", "US", top_k=3)
             diag["full_search_results"] = len(results)
@@ -190,7 +201,7 @@ async def faiss_debug():
                     "country": results[0].get("country"),
                 }
         except Exception as e:
-            diag["full_search_error"] = str(e)[:300]
+            diag["full_search_error"] = str(e)[:500]
 
     except Exception as e:
         diag["load_error"] = str(e)[:200]
